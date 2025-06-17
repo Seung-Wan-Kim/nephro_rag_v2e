@@ -1,4 +1,4 @@
-# create_embeddings_aki_md_ko.py
+# create_embeddings_ckd_ko.py
 
 from langchain.document_loaders import TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -15,25 +15,25 @@ def load_documents_from_folder(folder_path):
     return documents
 
 def main():
-    data_path = "docx_ko/aki"  # AKI 문서가 위치한 폴더
-    vector_store_path = "vector_store_aki_ko"
+    data_path = "docx_ko/ckd"  # CKD용으로 변경
+    vector_store_path = "vector_store_ckd_ko"
 
     if not os.path.exists(data_path):
-        raise ValueError("AKI 요약문서 디렉토리를 찾을 수 없습니다.")
+        raise ValueError("CKD 요약문서 디렉토리를 찾을 수 없습니다.")
 
-    print("📂 Loading documents...")
+    print("Loading documents...")
     documents = load_documents_from_folder(data_path)
 
-    print("✂️ Splitting documents...")
+    print("Splitting documents...")
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)
     docs = text_splitter.split_documents(documents)
 
-    print("📦 Creating FAISS vector store...")
+    print("Creating FAISS vector store...")
     embedding_model = HuggingFaceEmbeddings(model_name="jhgan/ko-sbert-nli")
     db = FAISS.from_documents(docs, embedding_model)
     db.save_local(vector_store_path)
 
-    print(f"✅ AKI 벡터 저장 완료: {vector_store_path}")
+    print(f"✅ CKD 벡터 저장 완료: {vector_store_path}")
 
 if __name__ == "__main__":
     main()
