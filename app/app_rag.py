@@ -3,7 +3,7 @@ import streamlit as st
 from langchain_community.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.chains import RetrievalQA
-from langchain.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
 import os
 
 # -------------------- 벡터 DB 경로 자동 선택 함수 --------------------
@@ -34,16 +34,16 @@ st.title("🧠 신장내과 진단 지원 시스템")
 
 # 수치 입력 칼럼 구성
 st.subheader("1. 혈액 검사 수치 입력")
-cols = st.columns(4)
-
 input_labels = [
     "BUN", "Creatinine", "eGFR", "Albumin", "Proteinuria",
     "Hb", "CRP", "Na", "K"
 ]
+
+cols = st.columns(3)
 user_inputs = {}
 for i, label in enumerate(input_labels):
-    with cols[i % 4]:
-        val = st.text_input(f"{label}")
+    with cols[i % 3]:
+        val = st.text_input(f"{label}", key=label)
         user_inputs[label] = float(val) if val.strip() else None
 
 # -------------------- 수치 기반 결과 확인 --------------------
@@ -104,7 +104,11 @@ if st.button("자연어 기반 질의 결과 확인") and query:
             st.error(f"FAISS 로딩 오류: {str(e)}")
             st.stop()
 
-        qa = RetrievalQA.from_chain_type(llm=OpenAI(temperature=0.3), chain_type="stuff", retriever=db.as_retriever())
+        qa = RetrievalQA.from_chain_type(
+            llm=ChatOpenAI(temperature=0.3, model="gpt-3.5-turbo"),
+            chain_type="stuff",
+            retriever=db.as_retriever()
+        )
         with st.spinner("답변 생성 중..."):
             result = qa.run(query)
         st.markdown("#### 📘 답변")
