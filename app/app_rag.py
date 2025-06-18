@@ -5,8 +5,7 @@ from langchain.chains import RetrievalQA
 from langchain.llms import OpenAI
 import os
 
-# -------------------- 설정 --------------------
-# 벡터 DB 경로 자동 선택 함수
+# -------------------- 벡터 DB 경로 자동 선택 함수 (수정 버전) --------------------
 def get_vector_path_from_question(question):
     keywords = {
         "aki": ["aki", "급성신손상"],
@@ -15,11 +14,19 @@ def get_vector_path_from_question(question):
         "gn": ["glomerulonephritis", "사구체신염"],
         "electrolyte": ["electrolyte", "전해질"]
     }
+    folder_map = {
+        "aki": "vector_store_aki_ko/",
+        "ckd": "vector_store_ckd_ko/",
+        "ns": "vector_store_ns_ko/",
+        "gn": "vector_store_gn_ko/",
+        "electrolyte": "vector_store_electrolyte_ko/"
+    }
     for folder, keys in keywords.items():
         for key in keys:
             if key.lower() in question.lower():
-                return f"vector_store_{folder}/"
-    return "vector_store_aki_ko/"  # 기본값
+                return folder_map[folder]
+    return folder_map["aki"]  # 기본값도 올바르게 설정
+
 
 # -------------------- Streamlit UI --------------------
 st.set_page_config(page_title="Nephrology RAG System", layout="wide")
