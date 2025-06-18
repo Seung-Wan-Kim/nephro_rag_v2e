@@ -1,72 +1,90 @@
 # app/app_rag.py
 
 import streamlit as st
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.chains.question_answering import load_qa_chain
+from langchain.chains import RetrievalQA
 from langchain.llms import OpenAI
-from langchain.prompts import PromptTemplate
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.docstore.document import Document
 import os
 
-# 🔸 벡터 저장소 경로들
-VECTOR_PATHS = {
-    "AKI": "vector_store_aki_ko",
-    "CKD": "vector_store_ckd_ko",
-    "Nephrotic Syndrome": "vector_store_ns_ko",
-    "Glomerulonephritis": "vector_store_gn_ko",
-    "Electrolyte Disorders": "vector_store_electrolyte_ko",
-}
-
-# 🔸 중요 검사 항목 리스트
-TEST_ITEMS = [
-    "Creatinine", "BUN", "eGFR", "Albumin", "Na", "K", "Cl", "HCO3", "Ca", "Phosphorus"
+# 기본 설정
+disease_groups = [
+    "aki",
+    "ckd",
+    "ns",
+    "gn",
+    "electrolyte"
 ]
 
-st.set_page_config(page_title="Nephrology RAG", layout="wide")
-st.title("🧪 신장내과 질병 예측 RAG 시스템")
+VECTOR_STORE_PATHS = {
+    "aki": "vector_store_aki_md_ko",
+    "ckd": "vector_store_ckd_md_ko",
+    "ns": "vector_store_ns_md_ko",
+    "gn": "vector_store_gn_md_ko",
+    "electrolyte": "vector_store_ed_md_ko"
+}
 
-st.markdown("#### 1. 혈액검사 수치 입력")
-col1, col2 = st.columns(2)
-user_inputs = {}
-
-with col1:
-    for item in TEST_ITEMS[:5]:
-        user_inputs[item] = st.text_input(f"{item} 수치", placeholder="예: 1.2")
-
-with col2:
-    for item in TEST_ITEMS[5:]:
-        user_inputs[item] = st.text_input(f"{item} 수치", placeholder="예: 3.8")
-
-st.markdown("---")
-question = st.text_area("#### 2. 자연어 질문 입력", placeholder="예: 이 수치로 볼 때 어떤 질병 가능성이 있나요?")
-
-if st.button("🔍 질의 응답 시작"):
-    # ✅ 문서 임베딩 모델 로드
-    embedding_model = HuggingFaceEmbeddings(model_name="jhgan/ko-sbert-nli")
-
-    # ✅ 모든 질병군에서 문서 검색
-    all_docs = []
-    for disease, path in VECTOR_PATHS.items():
-        if os.path.exists(path):
-            db = FAISS.load_local(path, embedding_model)
-            docs = db.similarity_search(question, k=2)
-            all_docs.extend(docs)
-
-    if not all_docs:
-        st.warning("❌ 관련된 문서를 찾을 수 없습니다.")
+# 질병군 추론 함수
+def detect_disease_group_from_question(question: str) -> str:
+    q = question.lower()
+    if "aki" in q or "acute kidney injury" in q or "급성 신손상" in q:
+        return "aki"
+    elif "ckd" in q or "chronic kidney disease" in q or "만성 콩팥병" in q:
+        return "ckd"
+    elif "nephrotic" in q or "신증후군" in q:
+        return "ns"
+    elif "glomerulonephritis" in q or "사구체신염" in q:
+        return "gn"
+    elif "electrolyte" in q or "전해질" in q:
+        return "electrolyte"
     else:
-        # ✅ 응답 생성
-        llm = OpenAI(temperature=0.3)
-        chain = load_qa_chain(llm, chain_type="stuff")
-        response = chain.run(input_documents=all_docs, question=question)
+        return "aki"  # 기본값
 
-        st.markdown("### 🧾 응답 결과")
-        st.success(response)
+# UI 구성
+st.title("🔎 신장내과 문서 기반 질의응답 시스템")
+st.markdown("""
+질병 관련 혈액검사 수치를 입력하고, 궁금한 내용을 자유롭게 물어보세요.
 
-        # ✅ 문서 출처 표시
-        st.markdown("### 📄 참조한 문서 (요약)")
-        for i, doc in enumerate(all_docs):
-            st.markdown(f"**{i+1}.** {doc.page_content[:300]}...")
+""")
 
+# 수치 입력창
+col1, col2, col3, col4, col5 = st.columns(5)
+with col1:
+    bun = st.text_input("BUN")
+with col2:
+    creatinine = st.text_input("Creatinine")
+with col3:
+    egfr = st.text_input("eGFR")
+with col4:
+    sodium = st.text_input("Na")
+with col5:
+    potassium = st.text_input("K")
+
+# 자연어 질문
+question = st.text_input("🗨️ 질의:", placeholder="예: 급성 신손상의 정의는?")
+
+if question:
+    disease_group = detect_disease_group_from_question(question)
+    vector_path = VECTOR_STORE_PATHS[disease_group]
+
+    # 모델 로드 및 검색
+    with st.spinner(f"📂 {disease_group.upper()} 문서 검색 중..."):
+        embedding_model = HuggingFaceEmbeddings(model_name="jhgan/ko-sbert-nli")
+        db = FAISS.load_local(vector_path, embedding_model)
+        retriever = db.as_retriever(search_kwargs={"k": 3})
+
+        # QA 체인 구성
+        qa = RetrievalQA.from_chain_type(
+            llm=OpenAI(temperature=0.3),
+            chain_type="stuff",
+            retriever=retriever,
+            return_source_documents=True
+        )
+
+        result = qa.invoke(question)
+        st.markdown("#### 💬 답변:")
+        st.write(result['result'])
+
+        st.markdown("#### 📄 참조 문서:")
+        for i, doc in enumerate(result['source_documents']):
+            st.write(f"{i+1}. {doc.metadata['source']}")
