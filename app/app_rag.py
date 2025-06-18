@@ -2,8 +2,6 @@
 import streamlit as st
 from langchain_community.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.chains import RetrievalQA
-from langchain.chat_models import ChatOpenAI
 import os
 
 # -------------------- 벡터 DB 경로 자동 선택 함수 --------------------
@@ -29,8 +27,8 @@ def get_vector_path_from_question(question):
     return folder_map["aki"]
 
 # -------------------- Streamlit UI --------------------
-st.set_page_config(page_title="Nephrology RAG System", layout="wide")
-st.title("🧠 신장내과 진단 지원 시스템")
+st.set_page_config(page_title="Nephrology RAG System (No API)", layout="wide")
+st.title("🧠 신장내과 진단 지원 시스템 (LLM 없이 실행)")
 
 # 수치 입력 칼럼 구성
 st.subheader("1. 혈액 검사 수치 입력")
@@ -87,11 +85,12 @@ if st.button("수치 기반 결과 확인"):
     if suggestions:
         st.warning("📌 더 정확한 분석을 위해 다음 항목 입력을 권장합니다: " + ", ".join(set(suggestions)))
 
-# -------------------- 자연어 기반 질의응답 --------------------
-st.subheader("2. 자연어 질문")
+# -------------------- 자연어 기반 벡터 검색만 수행 --------------------
+st.subheader("2. 자연어 질문 (LLM 없이 벡터 검색만)")
+
 query = st.text_area("질문을 입력하세요", placeholder="예: 급성신손상의 정의는?")
 
-if st.button("자연어 기반 질의 결과 확인") and query:
+if st.button("관련 문서 검색 결과 보기") and query:
     vector_path = get_vector_path_from_question(query)
 
     if not (os.path.exists(os.path.join(vector_path, "index.faiss")) and os.path.exists(os.path.join(vector_path, "index.pkl"))):
@@ -104,15 +103,14 @@ if st.button("자연어 기반 질의 결과 확인") and query:
             st.error(f"FAISS 로딩 오류: {str(e)}")
             st.stop()
 
-        qa = RetrievalQA.from_chain_type(
-            llm=ChatOpenAI(temperature=0.3, model="gpt-3.5-turbo"),
-            chain_type="stuff",
-            retriever=db.as_retriever()
-        )
-        with st.spinner("답변 생성 중..."):
-            result = qa.run(query)
-        st.markdown("#### 📘 답변")
-        st.write(result)
+        retriever = db.as_retriever()
+        with st.spinner("관련 문서 검색 중..."):
+            docs = retriever.get_relevant_documents(query)
+        st.markdown("#### 🔎 벡터 검색 결과")
+        if docs:
+            st.write(docs[0].page_content)
+        else:
+            st.info("관련 문서를 찾을 수 없습니다.")
 
 st.markdown("---")
-st.markdown("📁 *본 시스템은 AKI, CKD, NS, GN 질환군을 기반으로 수치 + 자연어 질의를 지원합니다.*")
+st.markdown("📁 *본 시스템은 LLM 없이 벡터 검색 기반으로 동작합니다.*")
