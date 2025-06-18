@@ -19,7 +19,7 @@ def get_vector_path_from_question(question):
         for key in keys:
             if key.lower() in question.lower():
                 return f"vector_store_{folder}/"
-    return "vector_store_aki/"  # 기본값
+    return "vector_store_aki_ko/"  # 기본값
 
 # -------------------- Streamlit UI --------------------
 st.set_page_config(page_title="Nephrology RAG System", layout="wide")
