@@ -1,1 +1,33 @@
 
+# Python cache
+__pycache__/
+*.py[cod]
+*.so
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Logs
+*.log
+
+# VSCode config
+.vscode/
+
+# Mac OS
+.DS_Store
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Ignore large data files that shouldn't be committed
+*.h5
+*.pt
+*.ckpt
+
+# Ignore markdown previews
+*.md~
