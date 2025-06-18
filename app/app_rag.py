@@ -1,90 +1,87 @@
-# app/app_rag.py
-
 import streamlit as st
 from langchain_community.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.chains import RetrievalQA
+from langchain.chains.question_answering import load_qa_chain
 from langchain.llms import OpenAI
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.docstore.document import Document
 import os
 
-# 기본 설정
-disease_groups = [
-    "aki",
-    "ckd",
-    "ns",
-    "gn",
-    "electrolyte"
-]
-
-VECTOR_STORE_PATHS = {
-    "aki": "vector_store_aki_md_ko",
-    "ckd": "vector_store_ckd_md_ko",
-    "ns": "vector_store_ns_md_ko",
-    "gn": "vector_store_gn_md_ko",
-    "electrolyte": "vector_store_ed_md_ko"
+# 벡터 저장소 경로 매핑
+vector_paths = {
+    "AKI": "vector_store_aki_ko",
+    "CKD": "vector_store_ckd_ko",
+    "NS": "vector_store_ns_ko",
+    "GN": "vector_store_gn_ko",
+    "Electrolyte": "vector_store_electrolyte_ko",
 }
 
-# 질병군 추론 함수
-def detect_disease_group_from_question(question: str) -> str:
-    q = question.lower()
-    if "aki" in q or "acute kidney injury" in q or "급성 신손상" in q:
-        return "aki"
-    elif "ckd" in q or "chronic kidney disease" in q or "만성 콩팥병" in q:
-        return "ckd"
-    elif "nephrotic" in q or "신증후군" in q:
-        return "ns"
-    elif "glomerulonephritis" in q or "사구체신염" in q:
-        return "gn"
-    elif "electrolyte" in q or "전해질" in q:
-        return "electrolyte"
+# 임베딩 모델 정의
+embedding_model = HuggingFaceEmbeddings(model_name="jhgan/ko-sbert-nli")
+
+# 질병군 자동 추론 (간단 키워드 기반)
+def detect_disease_group_from_query(query):
+    if "급성" in query or "AKI" in query:
+        return "AKI"
+    elif "만성" in query or "CKD" in query:
+        return "CKD"
+    elif "신증후군" in query or "NS" in query:
+        return "NS"
+    elif "사구체신염" in query or "GN" in query:
+        return "GN"
+    elif "전해질" in query or "electrolyte" in query:
+        return "Electrolyte"
     else:
-        return "aki"  # 기본값
+        return "CKD"
 
-# UI 구성
-st.title("🔎 신장내과 문서 기반 질의응답 시스템")
-st.markdown("""
-질병 관련 혈액검사 수치를 입력하고, 궁금한 내용을 자유롭게 물어보세요.
+# Streamlit 앱 시작
+st.title("💉 신장내과 RAG 진단 지원 시스템")
 
-""")
+# 20개 혈액검사 수치 입력 받기
+st.subheader("🧪 혈액검사 수치 입력")
+input_values = {}
+cols = st.columns(5)
+test_items = [
+    "BUN", "Creatinine", "BUN/Cr ratio", "eGFR", "Na",
+    "K", "Cl", "CO2", "Ca", "IP",
+    "Hb", "PTH", "Vitamin D", "ALP", "LDH",
+    "Lactate", "Albumin", "Total Protein", "Uric Acid", "Glucose"
+]
 
-# 수치 입력창
-col1, col2, col3, col4, col5 = st.columns(5)
-with col1:
-    bun = st.text_input("BUN")
-with col2:
-    creatinine = st.text_input("Creatinine")
-with col3:
-    egfr = st.text_input("eGFR")
-with col4:
-    sodium = st.text_input("Na")
-with col5:
-    potassium = st.text_input("K")
+for i, item in enumerate(test_items):
+    with cols[i % 5]:
+        input_values[item] = st.text_input(f"{item}", key=item)
 
-# 자연어 질문
-question = st.text_input("🗨️ 질의:", placeholder="예: 급성 신손상의 정의는?")
+# 자연어 질의 입력
+st.subheader("💬 질의 입력")
+query = st.text_area("질문을 입력하세요 (예: 급성 신손상의 정의는?)")
 
-if question:
-    disease_group = detect_disease_group_from_question(question)
-    vector_path = VECTOR_STORE_PATHS[disease_group]
+# 버튼 클릭 시 검색 수행
+if st.button("🔍 진단 정보 확인"):
+    if not query:
+        st.warning("질문을 입력해주세요.")
+    else:
+        # 질병군 자동 추정
+        detected_disease = detect_disease_group_from_query(query)
+        vector_path = vector_paths.get(detected_disease)
 
-    # 모델 로드 및 검색
-    with st.spinner(f"📂 {disease_group.upper()} 문서 검색 중..."):
-        embedding_model = HuggingFaceEmbeddings(model_name="jhgan/ko-sbert-nli")
-        db = FAISS.load_local(vector_path, embedding_model)
-        retriever = db.as_retriever(search_kwargs={"k": 3})
+        if not vector_path or not os.path.exists(f"{vector_path}/index.faiss"):
+            st.error("선택된 질병군의 벡터스토어를 찾을 수 없습니다.")
+        else:
+            # 벡터 DB 로드
+            db = FAISS.load_local(vector_path, embedding_model)
 
-        # QA 체인 구성
-        qa = RetrievalQA.from_chain_type(
-            llm=OpenAI(temperature=0.3),
-            chain_type="stuff",
-            retriever=retriever,
-            return_source_documents=True
-        )
+            # 유사 문서 검색
+            docs = db.similarity_search(query)
 
-        result = qa.invoke(question)
-        st.markdown("#### 💬 답변:")
-        st.write(result['result'])
+            # LLM 응답 (OpenAI API 사용)
+            llm = OpenAI(temperature=0.3)
+            chain = load_qa_chain(llm, chain_type="stuff")
+            answer = chain.run(input_documents=docs, question=query)
 
-        st.markdown("#### 📄 참조 문서:")
-        for i, doc in enumerate(result['source_documents']):
-            st.write(f"{i+1}. {doc.metadata['source']}")
+            st.markdown("### 📘 답변")
+            st.write(answer)
+
+            st.markdown("📎 관련 문서")
+            for i, doc in enumerate(docs):
+                st.markdown(f"**[{i+1}]** {doc.page_content[:300]}...")
