@@ -9,11 +9,11 @@ import os
 
 # 벡터 저장소 경로 매핑
 vector_paths = {
-    "AKI": "vector_store_aki_ko",
-    "CKD": "vector_store_ckd_ko",
-    "NS": "vector_store_ns_ko",
-    "GN": "vector_store_gn_ko",
-    "Electrolyte": "vector_store_electrolyte_ko",
+    "aki": "vector_store_aki_ko",
+    "ckd": "vector_store_ckd_ko",
+    "ns": "vector_store_ns_ko",
+    "gn": "vector_store_gn_ko",
+    "electrolyte": "vector_store_electrolyte_ko",
 }
 
 # 임베딩 모델 정의
@@ -21,18 +21,18 @@ embedding_model = HuggingFaceEmbeddings(model_name="jhgan/ko-sbert-nli")
 
 # 질병군 자동 추론 (간단 키워드 기반)
 def detect_disease_group_from_query(query):
-    if "급성" in query or "AKI" in query:
-        return "AKI"
-    elif "만성" in query or "CKD" in query:
-        return "CKD"
-    elif "신증후군" in query or "NS" in query:
-        return "NS"
-    elif "사구체신염" in query or "GN" in query:
-        return "GN"
+    if "급성" in query or "aki" in query:
+        return "aki"
+    elif "만성" in query or "ckd" in query:
+        return "ckd"
+    elif "신증후군" in query or "ns" in query:
+        return "ns"
+    elif "사구체신염" in query or "gn" in query:
+        return "gn"
     elif "전해질" in query or "electrolyte" in query:
-        return "Electrolyte"
+        return "electrolyte"
     else:
-        return "CKD"
+        return "ckd"
 
 # Streamlit 앱 시작
 st.title("💉 신장내과 RAG 진단 지원 시스템")
