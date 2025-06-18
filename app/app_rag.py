@@ -1,87 +1,80 @@
-import streamlit as st
+""import streamlit as st
 from langchain_community.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.chains.question_answering import load_qa_chain
+from langchain.chains import RetrievalQA
 from langchain.llms import OpenAI
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.docstore.document import Document
 import os
 
-# 벡터 저장소 경로 매핑
-vector_paths = {
-    "aki": "vector_store_aki_ko",
-    "ckd": "vector_store_ckd_ko",
-    "ns": "vector_store_ns_ko",
-    "gn": "vector_store_gn_ko",
-    "electrolyte": "vector_store_electrolyte_ko",
-}
+# -------------------- 설정 --------------------
+# 벡터 DB 경로 자동 선택 함수
+def get_vector_path_from_question(question):
+    keywords = {
+        "aki": ["aki", "급성신손상"],
+        "ckd": ["ckd", "만성신질환", "만성콩팥병"],
+        "ns": ["nephrotic", "신증후군"],
+        "gn": ["glomerulonephritis", "사구체신염"],
+        "electrolyte": ["electrolyte", "전해질"]
+    }
+    for folder, keys in keywords.items():
+        for key in keys:
+            if key.lower() in question.lower():
+                return f"vector_store_{folder}/"
+    return "vector_store_aki/"  # 기본값
 
-# 임베딩 모델 정의
-embedding_model = HuggingFaceEmbeddings(model_name="jhgan/ko-sbert-nli")
+# -------------------- Streamlit UI --------------------
+st.set_page_config(page_title="Nephrology RAG System", layout="wide")
+st.title("🧠 신장내과 진단 지원 시스템")
 
-# 질병군 자동 추론 (간단 키워드 기반)
-def detect_disease_group_from_query(query):
-    if "급성" in query or "aki" in query:
-        return "aki"
-    elif "만성" in query or "ckd" in query:
-        return "ckd"
-    elif "신증후군" in query or "ns" in query:
-        return "ns"
-    elif "사구체신염" in query or "gn" in query:
-        return "gn"
-    elif "전해질" in query or "electrolyte" in query:
-        return "electrolyte"
-    else:
-        return "ckd"
+# 수치 입력 칼럼 구성
+st.subheader("1. 혈액 검사 수치 입력")
+cols = st.columns(4)
 
-# Streamlit 앱 시작
-st.title("💉 신장내과 RAG 진단 지원 시스템")
-
-# 20개 혈액검사 수치 입력 받기
-st.subheader("🧪 혈액검사 수치 입력")
-input_values = {}
-cols = st.columns(5)
-test_items = [
-    "BUN", "Creatinine", "BUN/Cr ratio", "eGFR", "Na",
-    "K", "Cl", "CO2", "Ca", "IP",
-    "Hb", "PTH", "Vitamin D", "ALP", "LDH",
-    "Lactate", "Albumin", "Total Protein", "Uric Acid", "Glucose"
+input_labels = [
+    "BUN", "Creatinine", "B/C ratio", "eGFR", "Na", "K", "Cl", "CO2", "Ca", "IP",
+    "Hb", "PTH", "Vitamin D", "ALP", "LDH", "Lactate", "Albumin", "Proteinuria", "CRP", "Glucose"
 ]
 
-for i, item in enumerate(test_items):
-    with cols[i % 5]:
-        input_values[item] = st.text_input(f"{item}", key=item)
+user_inputs = {}
+for i, label in enumerate(input_labels):
+    with cols[i % 4]:
+        user_inputs[label] = st.text_input(f"{label}")
 
-# 자연어 질의 입력
-st.subheader("💬 질의 입력")
-query = st.text_area("질문을 입력하세요 (예: 급성 신손상의 정의는?)")
+# 결과 확인 버튼 1 (수치 기반 진단용)
+if st.button("수치 기반 결과 확인"):
+    st.markdown("👉 이 기능은 향후 구현될 예정입니다. 현재는 자연어 질문만 지원됩니다.")
 
-# 버튼 클릭 시 검색 수행
-if st.button("🔍 진단 정보 확인"):
-    if not query:
-        st.warning("질문을 입력해주세요.")
+# 자연어 질문
+st.subheader("2. 자연어 질문")
+query = st.text_area("질문을 입력하세요", placeholder="예: 급성신손상의 정의는?")
+
+# 결과 확인 버튼 2 (RAG)
+if st.button("자연어 기반 질의 결과 확인") and query:
+    # 벡터 경로 추출
+    vector_path = get_vector_path_from_question(query)
+
+    # 벡터 파일 존재 확인
+    if not (os.path.exists(os.path.join(vector_path, "index.faiss")) and os.path.exists(os.path.join(vector_path, "index.pkl"))):
+        st.error(f"해당 질병군에 대한 벡터 데이터가 존재하지 않습니다: {vector_path}")
     else:
-        # 질병군 자동 추정
-        detected_disease = detect_disease_group_from_query(query)
-        vector_path = vector_paths.get(detected_disease)
+        # 임베딩 모델 불러오기
+        embedding_model = HuggingFaceEmbeddings(model_name="jhgan/ko-sbert-nli")
 
-        if not vector_path or not os.path.exists(f"{vector_path}/index.faiss"):
-            st.error("선택된 질병군의 벡터스토어를 찾을 수 없습니다.")
-        else:
-            # 벡터 DB 로드
-            db = FAISS.load_local(vector_path, embedding_model)
+        # 벡터 DB 로드
+        try:
+            db = FAISS.load_local(vector_path, embedding_model, allow_dangerous_deserialization=True)
+        except ValueError as e:
+            st.error(f"FAISS 로딩 오류: {str(e)}")
+            st.stop()
 
-            # 유사 문서 검색
-            docs = db.similarity_search(query)
+        # QA 체인 생성
+        qa = RetrievalQA.from_chain_type(llm=OpenAI(temperature=0.3), chain_type="stuff", retriever=db.as_retriever())
 
-            # LLM 응답 (OpenAI API 사용)
-            llm = OpenAI(temperature=0.3)
-            chain = load_qa_chain(llm, chain_type="stuff")
-            answer = chain.run(input_documents=docs, question=query)
+        # 답변 생성
+        with st.spinner("답변 생성 중..."):
+            result = qa.run(query)
+        st.markdown("#### 📘 답변")
+        st.write(result)
 
-            st.markdown("### 📘 답변")
-            st.write(answer)
-
-            st.markdown("📎 관련 문서")
-            for i, doc in enumerate(docs):
-                st.markdown(f"**[{i+1}]** {doc.page_content[:300]}...")
+# 참고
+st.markdown("---")
+st.markdown("📁 *본 시스템은 5개 주요 신장내과 질환군(AKI, CKD, NS, GN, Electrolyte)의 문서 임베딩 기반 RAG 시스템입니다.*")
